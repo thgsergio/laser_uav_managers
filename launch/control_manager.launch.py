@@ -75,11 +75,20 @@ def generate_launch_description():
             default_value=PythonExpression(['"', os.getenv('REAL_UAV', "true"), '" == "false"']),
             description='Whether use the simulation time.'))
 
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'enable_garmin',
+            default_value='false',
+            description='A flag to enable Garmin integration.'
+        )
+    )
+
     #Initialize arguments
     nmpc_controller_file = LaunchConfiguration('nmpc_controller_file')
     agile_planner_file = LaunchConfiguration('agile_planner_file')
     uav_parameters_file = LaunchConfiguration('uav_parameters_file')
     control_manager_file = LaunchConfiguration('control_manager_file')
+    enable_garmin = LaunchConfiguration('enable_garmin')
 
     control_manager_lifecycle_node = LifecycleNode(
         package='laser_uav_managers',
@@ -87,7 +96,7 @@ def generate_launch_description():
         name='control_manager',
         namespace=uav_name,
         output='screen',
-        parameters=[control_manager_file, uav_parameters_file, agile_planner_file, nmpc_controller_file, {'use_sim_time': LaunchConfiguration('use_sim_time')}],
+        parameters=[control_manager_file, uav_parameters_file, agile_planner_file, nmpc_controller_file, {'use_sim_time': LaunchConfiguration('use_sim_time')}, {'is_garmin_enabled': enable_garmin}],
         remappings=[
             ('/' + uav_name + '/odometry_in', '/' + uav_name + '/estimation_manager/estimation'),
             ('/' + uav_name + '/motor_speed_estimation_in', '/' + uav_name + '/hw_api/motor_speed_estimated'),
@@ -101,6 +110,7 @@ def generate_launch_description():
             ('/' + uav_name + '/takeoff', '/' + uav_name + '/control_manager/takeoff'),
             ('/' + uav_name + '/land', '/' + uav_name + '/control_manager/land'),
             ('/' + uav_name + '/api_diagnostics_in', '/' + uav_name + '/px4_api/diagnostics'),
+            ('/' + uav_name + '/garmin_in', '/' + uav_name + '/px4_api/garmin'),
         ]
     )
 

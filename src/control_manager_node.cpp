@@ -6,6 +6,8 @@ namespace laser_uav_managers
 ControlManagerNode::ControlManagerNode(const rclcpp::NodeOptions &options) : rclcpp_lifecycle::LifecycleNode("control_manager", "", options) {
   RCLCPP_INFO(get_logger(), "Creating");
 
+  declare_parameter("is_garmin_enabled", rclcpp::ParameterValue(false));
+
   declare_parameter("rate.external_loop_control", rclcpp::ParameterValue(1.0));
   declare_parameter("rate.internal_loop_control", rclcpp::ParameterValue(1.0));
   declare_parameter("rate.diagnostics", rclcpp::ParameterValue(1.0));
@@ -15,6 +17,7 @@ ControlManagerNode::ControlManagerNode(const rclcpp::NodeOptions &options) : rcl
 
   declare_parameter("land.speed", rclcpp::ParameterValue(0.2));
   declare_parameter("land.threshold_detect", rclcpp::ParameterValue(0.8));
+  declare_parameter("land.height_threshold", rclcpp::ParameterValue(0.5));
   declare_parameter("land.increment_rampdown", rclcpp::ParameterValue(0.05));
 
   declare_parameter("filter_params.butterworth.gyro_a", rclcpp::ParameterValue(std::vector<float_t>(3, 0.0)));
@@ -156,6 +159,7 @@ CallbackReturn ControlManagerNode::on_cleanup([[maybe_unused]] const rclcpp_life
   sub_goto_relative_.reset();
   sub_api_diagnostics_.reset();
   sub_trajectory_path_.reset();
+  sub_garmin_.reset();
 
   return CallbackReturn::SUCCESS;
 }
@@ -174,6 +178,8 @@ void ControlManagerNode::getParameters() {
   rclcpp::Parameter aux;
   Eigen::VectorXd   aux_eigen;
 
+  get_parameter("is_garmin_enabled", is_garmin_enabled_);
+
   get_parameter("rate.external_loop_control", _rate_external_loop_control_);
   get_parameter("rate.internal_loop_control", _rate_internal_loop_control_);
   get_parameter("rate.diagnostics", _rate_diagnostics_);
@@ -183,6 +189,7 @@ void ControlManagerNode::getParameters() {
 
   get_parameter("land.speed", _land_speed_);
   get_parameter("land.threshold_detect", _land_threshold_detect_);
+  get_parameter("land.height_threshold", _land_height_threshold_);
   get_parameter("land.increment_rampdown", _land_increment_rampdown_);
 
   get_parameter("filter_params.butterworth.gyro_a", aux);
@@ -290,6 +297,8 @@ void ControlManagerNode::configPubSub() {
       "api_diagnostics_in", 1, std::bind(&ControlManagerNode::subApiDiagnostics, this, std::placeholders::_1));
   sub_trajectory_path_ = create_subscription<laser_msgs::msg::TrajectoryPath>("trajectory_path_in", 1,
                                                                               std::bind(&ControlManagerNode::subTrajectoryPath, this, std::placeholders::_1));
+  sub_garmin_ = create_subscription<sensor_msgs::msg::Range>("garmin_in", 1,
+                                                                std::bind(&ControlManagerNode::subGarmin, this, std::placeholders::_1));
 
   if (angular_rates_and_thrust_mode_) {
     pub_attitude_rates_and_thrust_reference_ = create_publisher<laser_msgs::msg::AttitudeRatesAndThrust>("attitude_rates_thrust_out", 10);
@@ -518,6 +527,25 @@ void ControlManagerNode::subApiDiagnostics(const laser_msgs::msg::ApiPx4Diagnost
   if (msg.armed && requested_takeoff_ && msg.offboard_mode) {
     lock_control_inputs_ = false;
   }
+}
+//}
+
+/* subGarmin() //{ */
+void ControlManagerNode::subGarmin(const sensor_msgs::msg::Range &msg) {
+  if (!is_active_) {
+    return;
+  }
+
+  if(!is_garmin_enabled_) {
+    return;
+  }
+
+  if(msg.range < msg.min_range || msg.range > msg.max_range) {
+    RCLCPP_WARN(this->get_logger(), "Garmin range out of bounds: %.2f m", msg.range);
+    return;
+  }
+
+  garmin_ = msg;
 }
 //}
 
@@ -806,7 +834,15 @@ void ControlManagerNode::tmrExternalLoopControl() {
 
   if (requested_land_) {
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2500, "Current estimated mass for detect landing: %.3f", estimated_mass_for_detect_landing_);
-    if (estimated_mass_for_detect_landing_ <= estimated_mass_ * _land_threshold_detect_) {
+    bool is_thrust_low = estimated_mass_for_detect_landing_ <= estimated_mass_ * _land_threshold_detect_;
+    bool ready_to_land;
+    if(is_garmin_enabled_) {
+      bool is_close_to_ground = garmin_.range < _land_height_threshold_;
+      ready_to_land = is_thrust_low && is_close_to_ground;
+    } else {
+      ready_to_land = is_thrust_low;
+    }
+    if (ready_to_land) {
       requested_land_        = false;
       land_done_             = true;
       diagnostics_.have_goal = false;

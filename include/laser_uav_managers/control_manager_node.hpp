@@ -11,6 +11,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/range.hpp>
 
 #include <laser_msgs/msg/uav_control_diagnostics.hpp>
 #include <laser_msgs/msg/reference_state.hpp>
@@ -95,6 +96,9 @@ private:
   rclcpp::Subscription<laser_msgs::msg::ApiPx4Diagnostics>::ConstSharedPtr sub_api_diagnostics_;
   void                                                                     subApiDiagnostics(const laser_msgs::msg::ApiPx4Diagnostics &msg);
 
+  rclcpp::Subscription<sensor_msgs::msg::Range>::ConstSharedPtr sub_garmin_;
+  void                                                          subGarmin(const sensor_msgs::msg::Range &msg);
+
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srv_takeoff_;
   void srvTakeoff(const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
@@ -115,6 +119,8 @@ private:
   double                                                                                  _rate_diagnostics_;
   rclcpp::TimerBase::SharedPtr                                                            tmr_diagnostics_;
   void                                                                                    tmrDiagnostics();
+  
+  sensor_msgs::msg::Range                       garmin_;
 
   laser_msgs::msg::UavControlDiagnostics        diagnostics_;
   nav_msgs::msg::Odometry                       odometry_;
@@ -159,6 +165,7 @@ private:
 
   double _land_speed_;
   double _land_threshold_detect_;
+  double _land_height_threshold_;
   double _land_increment_rampdown_;
 
   double land_start_rampdown_;
@@ -178,6 +185,7 @@ private:
   bool requested_land_{false};
   bool land_done_{true};
   bool land_rampdown_{false};
+  bool is_garmin_enabled_{false};
   bool is_active_{false};
 };
 }  // namespace laser_uav_managers

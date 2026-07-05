@@ -12,6 +12,7 @@
     land:
       increment_rampdown: 0.15 # [0, 1]
       threshold_detect: 0.70 # [0, 1]
+      height_threshold: 0.5 # m
       speed: 0.3 # m/s
 
     filter_params:
